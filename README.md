@@ -14,48 +14,47 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
 ---
 
 ## 📊 Dataset & Preprocessing Pipeline
-- **Dataset Used**: [BGL (BlueGene/L Supercomputer Log)](https://github.com/logpai/loghub)
-- **Full Dataset**: ~4.7 Million lines (~348,460 ground-truth anomalies)
-- **Data Processing**:
-  1. **Regex Parsing**: Maps unstructured log lines into structured tabular fields (`Timestamp`, `Node`, `Component`, `Level`, `Content`).
-  2. **Dynamic Variable Masking**: Extracts memory addresses, IP addresses, node IDs, and numbers into generalized **Event Templates**.
-  3. **Direct Integer Tokenization**: Maps template hashes to unique integer indices (`Event_Token`).
-  4. **Sliding Windowing**: Groups consecutive log event tokens into sequence vectors of size 20 (step size = 5).
-  5. **Sequence Ground Truth**: A window is labeled as an anomaly (`Is_Anomaly = 1`) if it contains $\ge 1$ ground-truth anomalous log.
+- **Dataset**: [BGL (BlueGene/L Supercomputer Log)](https://github.com/logpai/loghub)
+- **Full Scale**: **4,713,493 log lines** (~348,460 ground-truth anomalies)
+- **Data Pipeline**:
+  1. **Regex Parsing**: Structured extraction of headers and raw content.
+  2. **Dynamic Variable Masking**: Replaces memory addresses, IPs, numbers, and node IDs with `<*>` placeholders to form **Event Templates**.
+  3. **Train-Only Vocabulary Mapping**: Integer tokens derived strictly from training data. Unseen templates in validation/testing map to `<UNK>` (`0`).
+  4. **Sliding Windows**: Sequence generation (Window size = 20 logs, Step size = 5 for primary; Step size = 20 for non-overlapping validation).
 
 ---
 
-## 🏗️ Architecture & Version 2.0 Methodology
+## 🏗️ Architecture & Version 3.0 Methodology
 
-### 1. Chronological Data Splitting (Leakage Prevention)
-To prevent temporal data leakage across sliding log windows, the 4.7M dataset is strictly split chronologically **before** window generation:
-- **Train Set (70%)**: Used exclusively to train the Autoencoder on normal sequences (`Is_Anomaly = 0`).
-- **Validation Set (10%)**: Used to dynamically calibrate the anomaly reconstruction threshold.
-- **Test Set (20%)**: Unseen sequence data evaluated against the frozen threshold.
+### 1. Chronological Splitting & Leakage Prevention
+To prevent temporal sequence leakage, the 4.7M dataset is strictly split chronologically **before** windowing:
+- **Train Set (70%)**: 3,299,445 logs used to train the Autoencoder exclusively on normal sequences (`Is_Anomaly = 0`).
+- **Validation Set (10%)**: 471,349 logs used for Early Stopping and threshold calibration.
+- **Test Set (20%)**: 942,699 unseen logs reserved for final evaluation.
 
 ### 2. LSTM Autoencoder (Deep Learning)
-- **Model Layers**:
-  - `Embedding Layer`: Integer event tokens $\to$ 16D dense vectors.
-  - `Encoder (LSTM)`: Compresses 20-log window into a 32D hidden state vector.
-  - `Decoder (LSTM)`: Reconstructs the compressed hidden state back to the 20-log sequence.
-  - `Linear Output Layer`: Predicts reconstruction probabilities over the event vocabulary.
-- **Loss & Thresholding**: Trained using Cross-Entropy loss over healthy log patterns for 15 epochs. Anomaly scores are evaluated per window, and sequences exceeding the validation-calibrated 90th percentile reconstruction error threshold are flagged as anomalies.
+- **Embedding Layer**: Vocabulary size $\to$ 16D dense vectors.
+- **Encoder (LSTM)**: Compresses a 20-log window into a 32D hidden state vector.
+- **Decoder (LSTM)**: Reconstructs the compressed vector back into token probabilities.
+- **Training Strategy**: Trained using Cross-Entropy Loss with Adam optimizer ($lr=0.001$, batch size = 512) paired with **Early Stopping** (`patience=3`).
 
-### 3. Rule-Based Severity Baseline
-- Scans sequence windows for critical log severity levels (`WARNING`, `ERROR`, `SEVERE`, `FATAL`, `FAILURE`) identified during training. Flags a sequence as an anomaly if it contains $\ge 1$ critical token.
+### 3. Threshold Calibration & Sensitivity
+Reconstruction loss thresholds are computed using normal validation windows across the 90th, 95th, 97.5th, and 99th percentiles.
 
 ---
 
-## 📈 Performance & Results (4.7M Log Benchmark v2.0)
+## 📈 Benchmark Performance (Version 3.0 Evaluation)
 
-Evaluated under strict chronological sequence isolation (188,536 test windows):
+### Primary Test Set Performance (95th Percentile Validation Threshold)
+| Model / Approach | Precision | Recall | F1-Score | Accuracy | PR-AUC | ROC-AUC |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Severity Baseline** | 0.0000 | 0.0000 | **0.0000** | 93.60% | — | — |
+| **LSTM Autoencoder (DL)** | **0.7389** | **0.1981** | **0.3124** | **94.42%** | **0.2487** | **0.6508** |
 
-| Model / Approach | Precision (Anomaly) | Recall (Anomaly) | F1-Score | Overall Accuracy |
-| :--- | :---: | :---: | :---: | :---: |
-| **Rule-Based Severity Baseline** | 0.54 | 0.24 | **0.3275** | **94%** |
-| **LSTM Autoencoder (DL)** | 0.19 | 0.36 | **0.2486** | **86%** |
-
-> **Key Takeaway**: Under strict temporal evaluation without sequence leakage, the rule-based filter maintains higher precision, while the LSTM Autoencoder demonstrates higher recall in discovering sequence-level anomalies without requiring explicit error keyword flags.
+### Robustness & Diagnostics (Version 3.0 Highlights)
+- **Non-Overlapping Sequence Test (Step = 20)**: Re-evaluating test sequences without overlap confirmed metric stability (**F1-Score: 0.3088**, Precision: 0.7406, Recall: 0.1951).
+- **Out-of-Vocabulary (`<UNK>`) Impact**: Diagnostics revealed **85.4%** of test windows contain unseen log templates due to long-term system evolution.
+- **Ablation Study**: Excluding `<UNK>` tokens from reconstruction loss drops the F1-Score to **0.2127**, demonstrating that unknown log events actively contribute to the Autoencoder's anomaly signal.
 
 ---
 
