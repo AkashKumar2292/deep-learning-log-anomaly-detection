@@ -24,7 +24,7 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
 
 ---
 
-## 🏗️ Architecture & Version 3.0 Methodology
+## 🏗️ Version 4.0 Methodology & Diagnostics
 
 ### 1. Chronological Splitting & Leakage Prevention
 To prevent temporal sequence leakage, the 4.7M dataset is strictly split chronologically **before** windowing:
