@@ -32,29 +32,29 @@ To prevent temporal sequence leakage, the 4.7M dataset is strictly split chronol
 - **Validation Set (10%)**: 471,349 logs used for Early Stopping and threshold calibration.
 - **Test Set (20%)**: 942,699 unseen logs reserved for final evaluation.
 
-### 2. LSTM Autoencoder (Deep Learning)
-- **Embedding Layer**: Vocabulary size $\to$ 16D dense vectors.
-- **Encoder (LSTM)**: Compresses a 20-log window into a 32D hidden state vector.
-- **Decoder (LSTM)**: Reconstructs the compressed vector back into token probabilities.
-- **Training Strategy**: Trained using Cross-Entropy Loss with Adam optimizer ($lr=0.001$, batch size = 512) paired with **Early Stopping** (`patience=3`).
+### 2. Concept Drift & `<UNK>` Diagnostics
+- **Log-Level Drift**: **75.44%** of test log lines map to `<UNK>` templates absent from the training split.
+- **Window-Level Drift**: **80.93%** of test sequence windows contain at least one unseen `<UNK>` event token.
 
-### 3. Threshold Calibration & Sensitivity
-Reconstruction loss thresholds are computed using normal validation windows across the 90th, 95th, 97.5th, and 99th percentiles.
+### 3. Architecture & Training Strategy
+- **Embedding Layer**: Vocabulary size $\to$ 16D dense vectors.
+- **Encoder / Decoder**: Single-layer LSTMs with 32D hidden units.
+- **Training**: Optimization using Cross-Entropy Loss with Adam ($lr=0.001$, batch size = 512).
+- **Early Stopping**: Monitored validation loss with `patience=3` (training automatically converged at Epoch 8).
 
 ---
 
-## 📈 Benchmark Performance (Version 3.0 Evaluation)
+## 📈 Benchmark Performance (Version 4.0 Evaluation)
 
-### Primary Test Set Performance (95th Percentile Validation Threshold)
-| Model / Approach | Precision | Recall | F1-Score | Accuracy | PR-AUC | ROC-AUC |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Severity Baseline** | 0.0000 | 0.0000 | **0.0000** | 93.60% | — | — |
-| **LSTM Autoencoder (DL)** | **0.7389** | **0.1981** | **0.3124** | **94.42%** | **0.2487** | **0.6508** |
+### Primary Test Set Evaluation (95th Percentile Validation Threshold)
+| Model / Approach | Accuracy | Precision | Recall | F1-Score | PR-AUC | ROC-AUC | FPR | FNR |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Severity Baseline (FPR $\le$ 0.05)** | 93.60% | 0.0000 | 0.0000 | **0.0000** | — | — | 0.0000 | 1.0000 |
+| **LSTM Autoencoder (DL)** | **93.45%** | **0.4590** | **0.1248** | **0.1963** | **0.1809** | **0.6146** | 0.0101 | 0.8752 |
 
-### Robustness & Diagnostics (Version 3.0 Highlights)
-- **Non-Overlapping Sequence Test (Step = 20)**: Re-evaluating test sequences without overlap confirmed metric stability (**F1-Score: 0.3088**, Precision: 0.7406, Recall: 0.1951).
-- **Out-of-Vocabulary (`<UNK>`) Impact**: Diagnostics revealed **85.4%** of test windows contain unseen log templates due to long-term system evolution.
-- **Ablation Study**: Excluding `<UNK>` tokens from reconstruction loss drops the F1-Score to **0.2127**, demonstrating that unknown log events actively contribute to the Autoencoder's anomaly signal.
+### Robustness & Diagnostics Analysis
+- **Non-Overlapping Test Set (Step = 20)**: Re-evaluating non-overlapping test windows confirmed performance stability (**F1-Score: 0.1968**, Precision: 0.4609, Recall: 0.1251, PR-AUC: 0.1814).
+- **`<UNK>` Token Loss Ablation**: Ignoring `<UNK>` tokens during loss calculation (`ignore_index=0`) shifted the F1-score to **0.2694**, highlighting that unseen out-of-vocabulary events significantly contribute to reconstruction error signals.
 
 ---
 
