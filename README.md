@@ -24,37 +24,38 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
 
 ---
 
-## 🏗️ Version 4.0 Methodology & Diagnostics
+## 🏗️ Version 5.0 Methodology & Diagnostics
 
 ### 1. Chronological Splitting & Leakage Prevention
-To prevent temporal sequence leakage, the 4.7M dataset is strictly split chronologically **before** windowing:
+To prevent temporal sequence leakage, the dataset is split chronologically **before** sequence generation:
 - **Train Set (70%)**: 3,299,445 logs used to train the Autoencoder exclusively on normal sequences (`Is_Anomaly = 0`).
 - **Validation Set (10%)**: 471,349 logs used for Early Stopping and threshold calibration.
-- **Test Set (20%)**: 942,699 unseen logs reserved for final evaluation.
+- **Test Set (20%)**: 942,699 unseen logs reserved for evaluation.
 
-### 2. Concept Drift & `<UNK>` Diagnostics
-- **Log-Level Drift**: **75.44%** of test log lines map to `<UNK>` templates absent from the training split.
-- **Window-Level Drift**: **80.93%** of test sequence windows contain at least one unseen `<UNK>` event token.
+### 2. Comprehensive Vocabulary Drift & Diagnostic Analysis
+- **Token-Level Out-of-Vocabulary (OOV)**: **75.44%** of test log tokens are unseen in the training split.
+- **Window-Level OOV**: **80.93%** of test sequence windows contain at least one unseen `<UNK>` token.
+- **All-OOV Windows**: **70.83%** of test windows consist entirely of unseen `<UNK>` tokens due to system runtime changes over time.
 
-### 3. Architecture & Training Strategy
-- **Embedding Layer**: Vocabulary size $\to$ 16D dense vectors.
-- **Encoder / Decoder**: Single-layer LSTMs with 32D hidden units.
-- **Training**: Optimization using Cross-Entropy Loss with Adam ($lr=0.001$, batch size = 512).
-- **Early Stopping**: Monitored validation loss with `patience=3` (training automatically converged at Epoch 8).
+### 3. Training & Dual Baseline Strategy
+- **LSTM Autoencoder**: Embedding (16D), Encoder/Decoder LSTM (32D), trained with Adam ($lr=0.001$, batch size = 512) and Early Stopping (`patience=3`).
+- **Baseline 1 (FPR-Constrained Rule)**: Calibrated on validation data to enforce Max FPR $\le$ 0.05 (threshold: $>20$ critical events per window).
+- **Baseline 2 (Validation-Optimized Severity Rule)**: Optimized directly for validation F1-score (threshold: $>1$ critical event per window).
 
 ---
 
-## 📈 Benchmark Performance (Version 4.0 Evaluation)
+## 📈 Benchmark Performance (Version 5.0 Evaluation)
 
-### Primary Test Set Evaluation (95th Percentile Validation Threshold)
+### Primary Test Set Evaluation
 | Model / Approach | Accuracy | Precision | Recall | F1-Score | PR-AUC | ROC-AUC | FPR | FNR |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Severity Baseline (FPR $\le$ 0.05)** | 93.60% | 0.0000 | 0.0000 | **0.0000** | — | — | 0.0000 | 1.0000 |
-| **LSTM Autoencoder (DL)** | **93.45%** | **0.4590** | **0.1248** | **0.1963** | **0.1809** | **0.6146** | 0.0101 | 0.8752 |
+| **Baseline 1: FPR-Constrained Rule (>20)** | 93.60% | 0.0000 | 0.0000 | **0.0000** | — | — | 0.0000 | 1.0000 |
+| **Baseline 2: Val-Optimized Severity (>1)** | 89.51% | 0.3705 | 0.7816 | **0.7045** | — | — | 0.0971 | 0.2184 |
+| **LSTM Autoencoder (95th Percentile)** | **93.45%** | **0.4590** | **0.1248** | **0.1963** | **0.1809** | **0.6146** | 0.0101 | 0.8752 |
 
-### Robustness & Diagnostics Analysis
-- **Non-Overlapping Test Set (Step = 20)**: Re-evaluating non-overlapping test windows confirmed performance stability (**F1-Score: 0.1968**, Precision: 0.4609, Recall: 0.1251, PR-AUC: 0.1814).
-- **`<UNK>` Token Loss Ablation**: Ignoring `<UNK>` tokens during loss calculation (`ignore_index=0`) shifted the F1-score to **0.2694**, highlighting that unseen out-of-vocabulary events significantly contribute to reconstruction error signals.
+### Robustness & Masked Ablation Results
+- **Non-Overlapping Sequence Test (Step = 20)**: Evaluating non-overlapping test windows confirmed stable metrics (**F1-Score: 0.1968**, Precision: 0.4609, Recall: 0.1251, PR-AUC: 0.1814).
+- **`<UNK>`-Excluded Masked Ablation**: Masking out `<UNK>` tokens during window-level loss averaging improved the Autoencoder F1-score from **0.1963** to **0.2970**.
 
 ---
 
