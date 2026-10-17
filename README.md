@@ -24,23 +24,18 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
 
 ---
 
-## 🏗️ Version 5.0 Methodology & Diagnostics
+## 🏗️ Methodology & Diagnostics (Version 6.0)
 
-### 1. Chronological Splitting & Leakage Prevention
-To prevent temporal sequence leakage, the dataset is split chronologically **before** sequence generation:
-- **Train Set (70%)**: 3,299,445 logs used to train the Autoencoder exclusively on normal sequences (`Is_Anomaly = 0`).
-- **Validation Set (10%)**: 471,349 logs used for Early Stopping and threshold calibration.
-- **Test Set (20%)**: 942,699 unseen logs reserved for evaluation.
+### 1. Chronological Splitting
+Data is split chronologically **before** windowing to eliminate lookahead bias:
+- **Train Set (70%)**: 3,299,445 logs (Autoencoder trained exclusively on normal logs `Is_Anomaly = 0`).
+- **Validation Set (10%)**: 471,349 logs (used for Early Stopping and threshold calibration).
+- **Test Set (20%)**: 942,699 unseen logs reserved for final evaluation.
 
-### 2. Comprehensive Vocabulary Drift & Diagnostic Analysis
-- **Token-Level Out-of-Vocabulary (OOV)**: **75.44%** of test log tokens are unseen in the training split.
-- **Window-Level OOV**: **80.93%** of test sequence windows contain at least one unseen `<UNK>` token.
-- **All-OOV Windows**: **70.83%** of test windows consist entirely of unseen `<UNK>` tokens due to system runtime changes over time.
-
-### 3. Training & Dual Baseline Strategy
-- **LSTM Autoencoder**: Embedding (16D), Encoder/Decoder LSTM (32D), trained with Adam ($lr=0.001$, batch size = 512) and Early Stopping (`patience=3`).
-- **Baseline 1 (FPR-Constrained Rule)**: Calibrated on validation data to enforce Max FPR $\le$ 0.05 (threshold: $>20$ critical events per window).
-- **Baseline 2 (Validation-Optimized Severity Rule)**: Optimized directly for validation F1-score (threshold: $>1$ critical event per window).
+### 2. Concept Drift & Validation Loss Saturation Diagnostics
+- **Token OOV Rates**: Train: **0.00%**, Validation: **26.68%**, Test: **75.44%**.
+- **Window OOV Rates**: **80.93%** of test windows contain at least one `<UNK>` token, and **70.83%** are entirely composed of `<UNK>` tokens.
+- **Loss Floor Calibration**: **20.0978%** of normal validation windows are entirely `<UNK>`, yielding an artificial mean reconstruction error of **14.221604** (compared to **1.903386** for normal windows with known tokens). This causes 90th–99th percentiles of validation loss to cluster at **14.221605**.
 
 ---
 
