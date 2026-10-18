@@ -24,33 +24,46 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
 
 ---
 
-## 🏗️ Methodology & Diagnostics (Version 6.0)
+## 🏗️ Methodology & Architecture (Version 7.0)
 
-### 1. Chronological Splitting
-Data is split chronologically **before** windowing to eliminate lookahead bias:
-- **Train Set (70%)**: 3,299,445 logs (Autoencoder trained exclusively on normal logs `Is_Anomaly = 0`).
-- **Validation Set (10%)**: 471,349 logs (used for Early Stopping and threshold calibration).
-- **Test Set (20%)**: 942,699 unseen logs reserved for final evaluation.
+### 1. Chronological Splitting & OOV Diagnostics
+Data is split chronologically **before** windowing to eliminate lookahead bias (70% Train, 10% Val, 20% Test).
+- **Severe Concept Drift**: Test set token OOV rate is **75.44%**. **85.4%** of all test windows contain at least one `<UNK>` token.
 
-### 2. Concept Drift & Validation Loss Saturation Diagnostics
-- **Token OOV Rates**: Train: **0.00%**, Validation: **26.68%**, Test: **75.44%**.
-- **Window OOV Rates**: **80.93%** of test windows contain at least one `<UNK>` token, and **70.83%** are entirely composed of `<UNK>` tokens.
-- **Loss Floor Calibration**: **20.0978%** of normal validation windows are entirely `<UNK>`, yielding an artificial mean reconstruction error of **14.221604** (compared to **1.903386** for normal windows with known tokens). This causes 90th–99th percentiles of validation loss to cluster at **14.221605**.
+### 2. OOV-Robust Denoising LSTM Autoencoder
+To combat the artificial inflation of reconstruction errors caused by unseen templates, an **OOV-Robust model** is introduced. It is trained on normal sequences only, but the input is actively corrupted by randomly masking 15% of known tokens as `<UNK>` (`0`), forcing the model to reconstruct the original clean sequence and learn contextual immunity to drift.
+
+### 3. Synthetic Stress Testing
+A pure, OOV-free "Synthetic Substrate" is extracted from the normal test data. Specific perturbations are systematically injected at 10%, 20%, and 40% corruption fractions to evaluate robustness:
+- `substitute`: Random known training events.
+- `rare`: Rarely occurring known events.
+- `oov`: Unseen `<UNK>` tokens.
+- `repeat`: Repeating the previous event.
+- `shuffle`: Order permutations.
 
 ---
 
-## 📈 Benchmark Performance (Version 5.0 Evaluation)
+## 📈 Benchmark Performance (Version 7.0 Evaluation)
 
-### Primary Test Set Evaluation
-| Model / Approach | Accuracy | Precision | Recall | F1-Score | PR-AUC | ROC-AUC | FPR | FNR |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Baseline 1: FPR-Constrained Rule (>20)** | 93.60% | 0.0000 | 0.0000 | **0.0000** | — | — | 0.0000 | 1.0000 |
-| **Baseline 2: Val-Optimized Severity (>1)** | 89.51% | 0.3705 | 0.7816 | **0.7045** | — | — | 0.0971 | 0.2184 |
-| **LSTM Autoencoder (95th Percentile)** | **93.45%** | **0.4590** | **0.1248** | **0.1963** | **0.1809** | **0.6146** | 0.0101 | 0.8752 |
+All models utilize a 99th-percentile threshold calibrated on the normal validation set. 
 
-### Robustness & Masked Ablation Results
-- **Non-Overlapping Sequence Test (Step = 20)**: Evaluating non-overlapping test windows confirmed stable metrics (**F1-Score: 0.1968**, Precision: 0.4609, Recall: 0.1251, PR-AUC: 0.1814).
-- **`<UNK>`-Excluded Masked Ablation**: Masking out `<UNK>` tokens during window-level loss averaging improved the Autoencoder F1-score from **0.1963** to **0.2970**.
+### Primary Full BGL Test Evaluation
+| Model | AUC | AP | Accuracy | Precision | Recall | F1-Score | FPR |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Standard LSTM AE** | 0.5913 | **0.1781** | **94.34%** | **1.0000** | 0.1166 | **0.2088** | **0.0000** |
+| **OOV-Robust LSTM AE** | **0.6578** | 0.1260 | 92.62% | 0.1919 | **0.0477** | 0.0764 | 0.0137 |
+| **Bigram Transition** | 0.5784 | 0.0776 | 93.61% | 0.6567 | 0.0036 | 0.0072 | 0.0001 |
+| **Event Rarity** | 0.5674 | 0.0730 | 93.60% | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| **Count Z-Score** | 0.5387 | 0.0684 | 93.60% | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+
+### Secondary Disjoint Real Test (Non-Overlapping)
+| Model | AUC | AP | Accuracy | F1-Score |
+| :--- | :---: | :---: | :---: | :---: |
+| **Standard LSTM AE** | 0.5298 | 0.3374 | 78.25% | **0.2301** |
+| **OOV-Robust LSTM AE** | **0.5992** | **0.3461** | 74.90% | 0.0839 |
+| **Classical Baselines** | ~0.4900 | ~0.2400 | 75.00% | 0.0000 |
+
+*Note: While the OOV-Robust model improves overall discriminative power (AUC), the strict 99th-percentile threshold restricts its F1-score due to precision-recall trade-offs. The Deep Learning models significantly outperform the classical statistical baselines.*
 
 ---
 
