@@ -9,37 +9,38 @@ An end-to-end implementation comparing an unsupervised **Deep Learning approach 
 ---
 
 ## 📌 Problem Statement
-Cloud-native applications generate vast volumes of unstructured log data. Traditional threshold-based monitoring relies on static keyword matching (e.g., searching for `ERROR` or `FATAL`), which struggles to detect complex sequential anomaly patterns and frequently triggers high false-positive rates. This project implements an unsupervised **LSTM Autoencoder** to learn normal log sequence patterns and flags reconstruction errors as anomalies, benchmarking its accuracy against standard rule-based filters.
+Cloud-native applications generate vast volumes of unstructured log data. Traditional threshold-based monitoring relies on static keyword matching (e.g., searching for `ERROR` or `FATAL`), which struggles to detect complex sequential anomaly patterns and frequently triggers high false-positive rates . This project implements unsupervised **LSTM Autoencoder** architectures designed to learn normal log sequence patterns and flag reconstruction errors as anomalies, benchmarking performance against specialized OOV-robust variants and classical baselines
 
 ---
 
 ## 📊 Dataset & Preprocessing Pipeline
-- **Dataset**: [BGL (BlueGene/L Supercomputer Log)](https://github.com/logpai/loghub)
-- **Full Scale**: **4,713,493 log lines** (~348,460 ground-truth anomalies)
+- **Dataset**: [BGL (BlueGene/L Supercomputer Log)]
+- **Scale & Class Distribution**: ~4.7 million parsed log lines with a highly imbalanced log-level distribution (92.6% normal logs vs. 7.4% anomalous logs).
 - **Data Pipeline**:
-  1. **Regex Parsing**: Structured extraction of headers and raw content.
-  2. **Dynamic Variable Masking**: Replaces memory addresses, IPs, numbers, and node IDs with `<*>` placeholders to form **Event Templates**.
-  3. **Train-Only Vocabulary Mapping**: Integer tokens derived strictly from training data. Unseen templates in validation/testing map to `<UNK>` (`0`).
-  4. **Sliding Windows**: Sequence generation (Window size = 20 logs, Step size = 5 for primary; Step size = 20 for non-overlapping validation).
+  1. **Regex Parsing**: Custom regular expression parsing extracts structured headers and raw content, converting variable fields (e.g., IP addresses, core node IDs, memory hex codes) into generic `<*>` placeholders to form standardized **Event Templates**.
+  2. **Vocabulary Mapping**: The training vocabulary encompasses 30,050 unique event templates, including a dedicated `<UNK>` token (Index 0) reserved for unseen events.
+  3. **Chronological Splitting**: Data is split chronologically prior to windowing into 70% Training, 10% Validation, and 20% Testing sets to prevent lookahead bias.
+  4. **Sliding Windows**: Sequence generation uses a sliding window size of 20. Overlapping sequences utilize a step size of 5, while non-overlapping test evaluation utilizes a step size of 20
 
 ---
 
-## 🏗️ Methodology & Architecture (Version 7.0)
+## 🏗️ Methodology & Models (Version 8.0)
 
-### 1. Chronological Splitting & OOV Diagnostics
-Data is split chronologically **before** windowing to eliminate lookahead bias (70% Train, 10% Val, 20% Test).
-- **Severe Concept Drift**: Test set token OOV rate is **75.44%**. **85.4%** of all test windows contain at least one `<UNK>` token.
+Version 8.0 evaluates five distinct anomaly detection strategies :
 
-### 2. OOV-Robust Denoising LSTM Autoencoder
-To combat the artificial inflation of reconstruction errors caused by unseen templates, an **OOV-Robust model** is introduced. It is trained on normal sequences only, but the input is actively corrupted by randomly masking 15% of known tokens as `<UNK>` (`0`), forcing the model to reconstruct the original clean sequence and learn contextual immunity to drift.
+1. **Standard LSTM Autoencoder**: A PyTorch-based sequence autoencoder utilizing an embedding dimension of 16 and a hidden dimension of 32.
+2. **OOV-Robust Denoising LSTM Autoencoder**: Shares the architecture of the standard LSTM, but is trained on normal sequences artificially corrupted with a 15% random `<UNK>` masking probability to force contextual reconstruction and mitigate Out-Of-Vocabulary concept drift.
+3. **Event Rarity (Classical Baseline)**: Scores sequence windows based on the negative log frequency of constituent events derived from training distributions.
+4. **Bigram Transition (Classical Baseline)**: Evaluates sequences based on bigram transition probabilities, applying a default penalty probability to unseen OOV transitions.
+5. **Count Z-Score (Classical Baseline)**: Calculates anomaly scores based on standard deviations from mean event counts within window blocks.
 
-### 3. Synthetic Stress Testing
-A pure, OOV-free "Synthetic Substrate" is extracted from the normal test data. Specific perturbations are systematically injected at 10%, 20%, and 40% corruption fractions to evaluate robustness:
-- `substitute`: Random known training events.
-- `rare`: Rarely occurring known events.
-- `oov`: Unseen `<UNK>` tokens.
-- `repeat`: Repeating the previous event.
-- `shuffle`: Order permutations.
+### Synthetic Anomaly Injection
+The framework includes a synthetic testing substrate built from known clean, non-overlapping test windows. Controlled permutations are injected to measure model sensitivity to specific failure modes:
+- `substitute`: Replaces tokens with random known training events.
+- `rare`: Replaces tokens with rarely occurring known events.
+- `oov`: Replaces tokens with unseen `<UNK>` tokens.
+- `repeat`: Duplicates the preceding log event.
+- `shuffle`: Permutes event sequence order.
 
 ---
 
@@ -64,6 +65,16 @@ All models utilize a 99th-percentile threshold calibrated on the normal validati
 | **Classical Baselines** | ~0.4900 | ~0.2400 | 75.00% | 0.0000 |
 
 *Note: While the OOV-Robust model improves overall discriminative power (AUC), the strict 99th-percentile threshold restricts its F1-score due to precision-recall trade-offs. The Deep Learning models significantly outperform the classical statistical baselines.*
+
+---
+
+## ⚙️ Training & Calibration Details
+
+* **Environment**: Built for Google Colab with GPU acceleration (T4 GPU) and Google Drive integration for artifact persistence (`/content/drive/MyDrive/BGL Log/`).
+* **Optimization**: Deep learning models are trained using the Adam optimizer with a learning rate of `0.001` and batch size of `512`.
+* **Early Stopping**: Validation loss is monitored with a patience of 3 epochs.
+* **Thresholding**: Decision thresholds for all models are dynamically calibrated at the **99th-percentile** of their validation set scores.
+* **Metrics**: Evaluated on AUC, Average Precision (AP), Accuracy, Precision, Recall, F1-Score, False Positive Rate (FPR), and False Negative Rate (FNR).
 
 ---
 
