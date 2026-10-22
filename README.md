@@ -9,7 +9,7 @@ An end-to-end implementation comparing an unsupervised **Deep Learning approach 
 ---
 
 ## 📌 Problem Statement
-Cloud-native applications generate vast volumes of unstructured log data. Traditional threshold-based monitoring relies on static keyword matching (e.g., searching for `ERROR` or `FATAL`), which struggles to detect complex sequential anomaly patterns and frequently triggers high false-positive rates . This project implements unsupervised **LSTM Autoencoder** architectures designed to learn normal log sequence patterns and flag reconstruction errors as anomalies, benchmarking performance against specialized OOV-robust variants and classical baselines
+Cloud-native applications generate vast volumes of unstructured log data. Traditional threshold-based monitoring relies on static keyword matching (e.g., searching for `ERROR` or `FATAL`), which struggles to detect complex sequential anomaly patterns and frequently triggers high false-positive rates . This project implements unsupervised **LSTM Autoencoder** architectures designed to learn normal log sequence patterns and flag reconstruction errors as anomalies, benchmarking performance against specialized OOV-robust variants and classical baselines.
 
 ---
 
@@ -20,19 +20,20 @@ Cloud-native applications generate vast volumes of unstructured log data. Tradit
   1. **Regex Parsing**: Custom regular expression parsing extracts structured headers and raw content, converting variable fields (e.g., IP addresses, core node IDs, memory hex codes) into generic `<*>` placeholders to form standardized **Event Templates**.
   2. **Vocabulary Mapping**: The training vocabulary encompasses 30,050 unique event templates, including a dedicated `<UNK>` token (Index 0) reserved for unseen events.
   3. **Chronological Splitting**: Data is split chronologically prior to windowing into 70% Training, 10% Validation, and 20% Testing sets to prevent lookahead bias.
-  4. **Sliding Windows**: Sequence generation uses a sliding window size of 20. Overlapping sequences utilize a step size of 5, while non-overlapping test evaluation utilizes a step size of 20
+  4. **Sliding Windows**: Sequence generation uses a sliding window size of 20. Overlapping sequences utilize a step size of 5, while non-overlapping test evaluation utilizes a step size of 20.
 
 ---
 
-## 🏗️ Methodology & Models (Version 8.0)
+## 🏗️ Methodology & Models (Version 9.0)
 
-Version 8.0 evaluates five distinct anomaly detection strategies :
+Version 9.0 evaluates six distinct anomaly detection strategies:
 
 1. **Standard LSTM Autoencoder**: A PyTorch-based sequence autoencoder utilizing an embedding dimension of 16 and a hidden dimension of 32.
 2. **OOV-Robust Denoising LSTM Autoencoder**: Shares the architecture of the standard LSTM, but is trained on normal sequences artificially corrupted with a 15% random `<UNK>` masking probability to force contextual reconstruction and mitigate Out-Of-Vocabulary concept drift.
 3. **Event Rarity (Classical Baseline)**: Scores sequence windows based on the negative log frequency of constituent events derived from training distributions.
 4. **Bigram Transition (Classical Baseline)**: Evaluates sequences based on bigram transition probabilities, applying a default penalty probability to unseen OOV transitions.
 5. **Count Z-Score (Classical Baseline)**: Calculates anomaly scores based on standard deviations from mean event counts within window blocks.
+6. **Count Z-Score (OOV-neutral)**: An optimized variant of the Count Z-Score model designed to remain robust against unseen Out-Of-Vocabulary tokens, preventing spurious anomaly flags from novel but benign events.
 
 ### Synthetic Anomaly Injection
 The framework includes a synthetic testing substrate built from known clean, non-overlapping test windows. Controlled permutations are injected to measure model sensitivity to specific failure modes:
@@ -44,15 +45,16 @@ The framework includes a synthetic testing substrate built from known clean, non
 
 ---
 
-## 📈 Benchmark Performance (Version 7.0 Evaluation)
+## 📈 Benchmark Performance (Version 9.0 Evaluation)
 
 All models utilize a 99th-percentile threshold calibrated on the normal validation set. 
 
 ### Primary Full BGL Test Evaluation
 | Model | AUC | AP | Accuracy | Precision | Recall | F1-Score | FPR |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Standard LSTM AE** | 0.5913 | **0.1781** | **94.34%** | **1.0000** | 0.1166 | **0.2088** | **0.0000** |
-| **OOV-Robust LSTM AE** | **0.6578** | 0.1260 | 92.62% | 0.1919 | **0.0477** | 0.0764 | 0.0137 |
+| **Count Z-Score (OOV-neutral)**| - | - | - | - | - | **0.3574** | - |
+| **Standard LSTM AE** | 0.5972 | 0.1781 | 94.34% | 1.0000 | 0.1166 | 0.2088 | 0.0000 |
+| **OOV-Robust LSTM AE** | **0.6578** | 0.1260 | 92.62% | 0.1919 | 0.0477 | 0.0764 | 0.0137 |
 | **Bigram Transition** | 0.5784 | 0.0776 | 93.61% | 0.6567 | 0.0036 | 0.0072 | 0.0001 |
 | **Event Rarity** | 0.5674 | 0.0730 | 93.60% | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
 | **Count Z-Score** | 0.5387 | 0.0684 | 93.60% | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
@@ -60,11 +62,11 @@ All models utilize a 99th-percentile threshold calibrated on the normal validati
 ### Secondary Disjoint Real Test (Non-Overlapping)
 | Model | AUC | AP | Accuracy | F1-Score |
 | :--- | :---: | :---: | :---: | :---: |
-| **Standard LSTM AE** | 0.5298 | 0.3374 | 78.25% | **0.2301** |
+| **Standard LSTM AE** | 0.5298 | 0.3374 | 78.25% | 0.2301 |
 | **OOV-Robust LSTM AE** | **0.5992** | **0.3461** | 74.90% | 0.0839 |
 | **Classical Baselines** | ~0.4900 | ~0.2400 | 75.00% | 0.0000 |
 
-*Note: While the OOV-Robust model improves overall discriminative power (AUC), the strict 99th-percentile threshold restricts its F1-score due to precision-recall trade-offs. The Deep Learning models significantly outperform the classical statistical baselines.*
+*Note: The Count Z-Score (OOV-neutral) currently leads the primary F1-Score evaluation. While the OOV-Robust model improves overall discriminative power (AUC), the strict 99th-percentile threshold restricts its F1-score due to precision-recall trade-offs.*
 
 ---
 
@@ -98,7 +100,7 @@ deep-learning-log-anomaly-detection/
 ### 1. Clone the Repository
 
 ``` Bash
-git clone [https://github.com/AkashKumar2292/deep-learning-log-anomaly-detection.git](https://github.com/AkashKumar2292/deep-learning-log-anomaly-detection.git)
+git clone https://github.com/AkashKumar2292/deep-learning-log-anomaly-detection.git
 cd deep-learning-log-anomaly-detection
 ```
 ### 2. Set Up Virtual Environment
@@ -114,8 +116,8 @@ pip install -r requirements.txt
 jupyter notebook notebooks/Log_Anomaly_Detection.ipynb
 ```
 ### 4. Running on Google Colab
-1. Upload notebooks/Log_Anomaly_Detection.ipynb to Google Colab.
-2. Mount your Google Drive containing BGL.log.zip or upload the dataset directly.
+1. Upload `notebooks/Log_Anomaly_Detection.ipynb` to Google Colab.
+2. Mount your Google Drive containing `BGL.log.zip` or upload the dataset directly.
 3. Enable GPU Hardware Acceleration (Runtime > Change runtime type > T4 GPU).
 4. Execute cells sequentially.
 
