@@ -91,7 +91,6 @@ deep-learning-log-anomaly-detection/
 ├── .gitignore
 ├── LICENSE
 ├── README.md
-├── README_6.md                     # Legacy documentation (referenced verbatim)
 ├── requirements.txt
 ├── notebooks/
 │   └── Log_Anomaly_Detection.ipynb # Complete prototype (smoke) & full (4.7M) execution pipeline
